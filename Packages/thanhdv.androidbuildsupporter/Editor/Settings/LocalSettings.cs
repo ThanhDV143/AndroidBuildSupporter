@@ -1,35 +1,7 @@
-using System;
-using System.Collections.Generic;
 using UnityEditor;
 
 namespace ThanhDV.AndroidBuildSupporter
 {
-    [Serializable]
-    internal sealed class BuildFile
-    {
-        public string name;
-        public string path;
-        public long size;
-        public string link;
-    }
-
-    [Serializable]
-    internal sealed class BuildRecord
-    {
-        public string variant;
-        /// <summary>Succeeded, Warning or Failed.</summary>
-        public string state;
-        public string version;
-        public int code;
-        public string finishedAt;
-        public double seconds;
-        public string folder;
-        public List<BuildFile> files = new List<BuildFile>();
-        public List<string> installedOn = new List<string>();
-        public List<string> warnings = new List<string>();
-        public string error;
-    }
-
     /// <summary>
     /// Settings of this machine, including secrets. Saved in UserSettings/, which Unity's .gitignore template ignores.
     /// Values are stored as plain text.
@@ -64,6 +36,7 @@ namespace ThanhDV.AndroidBuildSupporter
         /// <summary>"" uses the bundletool that ships with the Editor's Android module.</summary>
         public string bundletoolPath = "";
 
+        /// <summary>Where the last build was kept before the history existed; moved into it once, then cleared.</summary>
         public BuildRecord lastBuild;
 
         public void Save() => Save(true);

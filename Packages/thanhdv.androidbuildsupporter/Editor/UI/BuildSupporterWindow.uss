@@ -317,6 +317,15 @@
     padding: 0;
 }
 
+.abs-chip > Label:hover {
+    color: rgb(120, 180, 255);
+}
+
+.abs-chip-copied {
+    border-color: rgba(70, 190, 110, 0.8);
+    background-color: rgba(70, 190, 110, 0.22);
+}
+
 .abs-chip-highlight {
     border-color: rgba(222, 160, 60, 0.7);
     background-color: rgba(222, 160, 60, 0.16);
@@ -497,4 +506,128 @@
     text-overflow: ellipsis;
     margin: 0;
     padding: 0;
+}
+
+/* --- History --------------------------------------------------------------------------------------------- */
+
+.abs-history-filters {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.abs-history-variant {
+    width: 120px;
+    margin: 0 12px 0 0;
+}
+
+.abs-history-search-label {
+    margin: 0 6px 0 4px;
+    padding: 0;
+    opacity: 0.8;
+}
+
+.abs-history-row {
+    margin-bottom: 6px;
+    border-width: 1px;
+    border-radius: 6px;
+    border-color: rgba(128, 128, 128, 0.22);
+    background-color: rgba(128, 128, 128, 0.06);
+}
+
+.abs-history-row-open {
+    border-color: rgba(76, 140, 230, 0.6);
+}
+
+.abs-history-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 10px;
+}
+
+.abs-history-header:hover {
+    background-color: rgba(128, 128, 128, 0.10);
+}
+
+.abs-history-titles {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 0;
+}
+
+.abs-history-title {
+    -unity-font-style: bold;
+    margin: 0;
+    padding: 0;
+}
+
+.abs-history-meta {
+    font-size: 11px;
+    opacity: 0.7;
+    margin: 2px 0 0 0;
+    padding: 0;
+}
+
+.abs-history-arrow {
+    margin: 0 0 0 8px;
+    opacity: 0.6;
+}
+
+.abs-history-details {
+    padding: 4px 12px 10px 12px;
+    border-top-width: 1px;
+    border-color: rgba(128, 128, 128, 0.22);
+}
+
+.abs-history-files {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.abs-history-file {
+    margin-bottom: 2px;
+}
+
+.abs-history-file-name {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.abs-history-missing {
+    opacity: 0.5;
+    -unity-font-style: italic;
+}
+
+.abs-history-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    white-space: normal;
+    margin: 0;
+    padding: 2px 0 0 0;
+}
+
+.abs-history-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    margin: 6px 0 4px 0;
+}
+
+.abs-history-actions > .abs-button {
+    margin: 0 4px 4px 0;
+}
+
+.abs-history-empty,
+.abs-history-count {
+    font-size: 11px;
+    opacity: 0.65;
+    white-space: normal;
+    margin: 4px 2px;
+}
+
+.abs-last-text:hover {
+    opacity: 1;
 }

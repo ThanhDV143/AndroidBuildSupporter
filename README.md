@@ -6,6 +6,7 @@ An Android build window for Unity: the settings you edit most in one place, QA a
 - **Build QA**: an APK with every scripting define symbol.
 - **Build release**: an AAB without the symbols you list, then a universal APK made from that AAB with bundletool.
 - **After a build**: install and open the APK with adb (USB or Wi-Fi), upload to Google Drive, report to Discord.
+- **History**: the last 100 builds of this machine, to install, upload or report one again.
 - **Checks before Unity starts building**: keystore passwords, version code, package name, backend and architectures.
 
 ## Installation
@@ -79,6 +80,19 @@ Files are uploaded to *Subfolder* (`Builds/{version}` by default, folders are cr
 ### Discord
 
 Create a webhook in the channel settings (*Integrations → Webhooks*) and paste its URL. Every build message mentions the users in *Mention* (Discord user IDs separated by commas: *Settings → Advanced → Developer Mode*, then right-click a user → *Copy User ID*), and failed builds attach the build log.
+
+## History
+
+The History tab lists the last 100 builds made on this machine, newest first; click *Last* in the footer to open the latest one. Filter by QA or release, failed builds only, or version.
+
+Open a build to see its files, links, warnings, error and the slowest build steps, and to:
+
+- **Install again**: install its APK on the device chosen in the Build tab, for example to go back to an older version.
+- **Upload again**: upload the files that have no Drive link yet, after a failed upload.
+- **Send to Discord**: post its result again.
+- **Copy links**, **Open log** (failed builds), **Remove** (optionally deleting its files).
+
+The history is saved in `UserSettings/ThanhDV.AndroidBuildSupporter.History.asset` and logs of failed builds in `Library/ThanhDV.AndroidBuildSupporter/Logs`, both on this machine only: the team shares builds through Drive and Discord.
 
 ## License
 

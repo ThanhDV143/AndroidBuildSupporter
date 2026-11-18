@@ -136,11 +136,14 @@ namespace ThanhDV.AndroidBuildSupporter
                     hide?.Pause();
                     hide = null;
                     if (autoHide && !string.IsNullOrEmpty(text) && !text.EndsWith("…", StringComparison.Ordinal))
+                    {
+                        Log(text, kind());
                         hide = notice.schedule.Execute(() =>
                         {
                             expired = true;
                             notice.style.display = DisplayStyle.None;
                         }).StartingIn(NoticeMs);
+                    }
                 }
                 notice.text = text ?? "";
                 notice.style.display = string.IsNullOrEmpty(text) || expired ? DisplayStyle.None : DisplayStyle.Flex;
@@ -155,6 +158,15 @@ namespace ThanhDV.AndroidBuildSupporter
         }
 
         public Label Notice(VisualElement parent, Func<string> get, string kind, bool autoHide = false) => Notice(parent, get, () => kind, autoHide);
+
+        /// <summary>Copies a notice that hides itself to the Console, so it can still be read after it is gone.</summary>
+        public static void Log(string text, string kind)
+        {
+            string message = "[Android Build Supporter] " + text;
+            if (kind == "error") Debug.LogError(message);
+            else if (kind == "warning") Debug.LogWarning(message);
+            else Debug.Log(message);
+        }
 
         // --- Fields --------------------------------------------------------------------------------------------
 
@@ -325,8 +337,20 @@ namespace ThanhDV.AndroidBuildSupporter
                     var chip = new VisualElement();
                     chip.AddToClassList("abs-chip");
                     if (highlight?.Invoke(item) ?? false) chip.AddToClassList("abs-chip-highlight");
-                    chip.Add(new Label(item));
                     string captured = item;
+                    var text = new Label(item) { tooltip = "Click to copy; right-click to copy all" };
+                    text.AddManipulator(new Clickable(() =>
+                    {
+                        UnityEditor.EditorGUIUtility.systemCopyBuffer = captured;
+                        chip.AddToClassList("abs-chip-copied");
+                        chip.schedule.Execute(() => chip.RemoveFromClassList("abs-chip-copied")).StartingIn(600);
+                    }));
+                    chip.AddManipulator(new ContextualMenuManipulator(e =>
+                    {
+                        e.menu.AppendAction("Copy", _ => UnityEditor.EditorGUIUtility.systemCopyBuffer = captured);
+                        e.menu.AppendAction("Copy all", _ => UnityEditor.EditorGUIUtility.systemCopyBuffer = string.Join(";", get()));
+                    }));
+                    chip.Add(text);
                     var remove = new Button(() =>
                     {
                         set(get().Where(i => i != captured).ToList());

@@ -17,7 +17,10 @@ namespace ThanhDV.AndroidBuildSupporter
         private const string StylePath = "Packages/thanhdv.androidbuildsupporter/Editor/UI/BuildSupporterWindow.uss";
         private const string TabPref = "ThanhDV.AndroidBuildSupporter.Tab";
         private static readonly Regex SymbolPattern = new Regex("^[A-Za-z_][A-Za-z0-9_]*$");
-        private static readonly string[] Tabs = { "App", "Android", "Build", "Distribution" };
+        private static readonly string[] Tabs = { "App", "Android", "Build", "Distribution", "History" };
+        private const int HistoryTab = 4;
+
+        private readonly HistoryPage history = new HistoryPage();
 
         /// <summary>AndroidArchitecture.X86, by value: Unity 6 marks it obsolete and no longer builds it.</summary>
         private const AndroidArchitecture X86 = (AndroidArchitecture)4;
@@ -83,6 +86,7 @@ namespace ThanhDV.AndroidBuildSupporter
             AddPage(scroll, BuildAndroidPage);
             AddPage(scroll, BuildBuildPage);
             AddPage(scroll, BuildDistributionPage);
+            AddPage(scroll, page => history.Build(page, form));
             BuildFooter(root);
 
             ShowTab(EditorPrefs.GetInt(TabPref, 0));
@@ -281,18 +285,24 @@ namespace ThanhDV.AndroidBuildSupporter
             chip.AddToClassList("abs-state");
             var text = new Label();
             text.AddToClassList("abs-last-text");
+            // The last build opens in the History tab.
+            text.AddManipulator(new Clickable(() =>
+            {
+                ShowTab(HistoryTab);
+                history.Expand(BuildHistory.instance.Latest?.id);
+            }));
             last.Add(chip);
             last.Add(text);
             Button show = Form.Button(last, "Show", () =>
             {
-                BuildRecord record = LocalSettings.instance.lastBuild;
+                BuildRecord record = BuildHistory.instance.Latest;
                 string file = record?.files.Select(f => f.path).FirstOrDefault(File.Exists);
                 if (file != null) EditorUtility.RevealInFinder(file);
                 else if (record != null && Directory.Exists(record.folder)) EditorUtility.RevealInFinder(record.folder);
             }, "Show the build in the file browser");
             Button copy = Form.Button(last, "Copy links", () =>
             {
-                BuildRecord record = LocalSettings.instance.lastBuild;
+                BuildRecord record = BuildHistory.instance.Latest;
                 if (record == null) return;
                 EditorGUIUtility.systemCopyBuffer = string.Join("\n", record.files.Where(f => f.link != null).Select(f => $"[{f.name}]({f.link})"));
             }, "Copy the Google Drive links");
@@ -300,7 +310,7 @@ namespace ThanhDV.AndroidBuildSupporter
 
             form.OnRefresh(() =>
             {
-                BuildRecord record = LocalSettings.instance.lastBuild;
+                BuildRecord record = BuildHistory.instance.Latest;
                 bool any = record != null && !string.IsNullOrEmpty(record.variant);
                 last.style.display = any ? DisplayStyle.Flex : DisplayStyle.None;
                 if (!any) return;
@@ -309,7 +319,8 @@ namespace ThanhDV.AndroidBuildSupporter
                 chip.EnableInClassList("abs-state-warning", record.state == BuildRunner.Warning);
                 chip.EnableInClassList("abs-state-error", record.state == BuildRunner.Failed);
                 text.text = $"Last: {record.variant} {record.version} ({record.code}) · {Naming.Duration(record.seconds)} · {record.finishedAt}";
-                text.tooltip = string.Join("\n", new[] { record.error }.Concat(record.warnings).Where(s => !string.IsNullOrEmpty(s)));
+                text.tooltip = string.Join("\n", new[] { record.error }.Concat(record.warnings).Concat(new[] { "Click to open it in History." })
+                    .Where(s => !string.IsNullOrEmpty(s)));
                 show.style.display = record.files.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
                 copy.style.display = record.files.Any(f => f.link != null) ? DisplayStyle.Flex : DisplayStyle.None;
             });

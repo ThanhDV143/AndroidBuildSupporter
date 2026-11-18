@@ -65,7 +65,7 @@ namespace ThanhDV.AndroidBuildSupporter
                 ProcessResult install = await ProcessRunner.RunAsync(adb, new[] { "-s", device.Serial, "install", "-r", apk }, timeoutMs: 600000);
                 if (!install.Succeeded)
                 {
-                    warnings.Add($"Install failed on {device.Label}: {install.Tail(2)}");
+                    warnings.Add($"Install failed on {device.Label}: {InstallError(install, packageName)}");
                     continue;
                 }
 
@@ -76,6 +76,17 @@ namespace ThanhDV.AndroidBuildSupporter
                 installed.Add(device.Label);
             }
             return installed;
+        }
+
+        /// <summary>Why adb install failed, in one line: the "Failure [...]" adb prints, explained for the common case.</summary>
+        private static string InstallError(ProcessResult install, string packageName)
+        {
+            if (install.Output.Contains("INSTALL_FAILED_UPDATE_INCOMPATIBLE"))
+                return $"the device already has {packageName} signed with another key (a QA build, a release build or the store version). Uninstall it from the device, then install again.";
+            string failure = install.Output.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Contains("Failure ["));
+            if (failure == null) return install.Tail(2);
+            int start = failure.IndexOf("Failure [", StringComparison.Ordinal);
+            return failure.Substring(start);
         }
 
         /// <summary>

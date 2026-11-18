@@ -27,7 +27,8 @@ namespace ThanhDV.AndroidBuildSupporter
                 errors.Add("The active platform is not Android. Switch to Android in Build Settings first.");
 
             string versionError = VersionCode.Apply();
-            if (versionError != null) errors.Add(versionError);
+            if (versionError != null)
+                errors.Add(versionError.StartsWith("Version", StringComparison.Ordinal) ? versionError : $"Version {PlayerSettings.bundleVersion}: {versionError}");
             else if (VersionCode.BuildOf(PlayerSettings.Android.bundleVersionCode) >= VersionCode.MaxBuild)
                 errors.Add($"Version {PlayerSettings.bundleVersion} has used all {VersionCode.MaxBuild} build numbers. Raise the version.");
 

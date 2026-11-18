@@ -85,17 +85,21 @@ namespace ThanhDV.AndroidBuildSupporter
             BuildSupporterSettings settings = BuildSupporterSettings.instance;
             DateTime started = DateTime.Now;
             var watch = Stopwatch.StartNew();
+            string package = PlayerSettings.GetApplicationIdentifier(UnityCompat.Android);
             var record = new BuildRecord
             {
+                id = Guid.NewGuid().ToString("N"),
                 variant = title,
                 version = PlayerSettings.bundleVersion,
                 code = PlayerSettings.Android.bundleVersionCode,
-                folder = Naming.OutputFolder(variant, started)
+                package = package,
+                startedAt = started.ToString("yyyy-MM-dd HH:mm"),
+                folder = Naming.OutputFolder(variant, started),
+                driveFolder = Naming.DriveFolder(variant, started)
             };
             string fileName = Naming.FileName(variant, started);
             string apk = Path.Combine(record.folder, fileName + ".apk");
             string aab = Path.Combine(record.folder, fileName + ".aab");
-            string package = PlayerSettings.GetApplicationIdentifier(UnityCompat.Android);
             var log = new StringBuilder();
             Application.LogCallback capture = (message, stack, type) =>
             {
@@ -112,6 +116,7 @@ namespace ThanhDV.AndroidBuildSupporter
                 SetStatus($"{title}: building {(release ? "AAB" : "APK")}…", progress, 0.1f);
                 report = await OutsidePlayerLoop(() => Build(release, release ? aab : apk, settings));
                 Application.logMessageReceived -= capture;
+                record.slowestSteps = Discord.SlowestSteps(report) ?? "";
 
                 if (report.summary.result != BuildResult.Succeeded)
                 {
@@ -140,7 +145,7 @@ namespace ThanhDV.AndroidBuildSupporter
                     Task<List<string>> install = installApk == null || !local.installEnabled
                         ? Task.FromResult(new List<string>())
                         : Adb.InstallAsync(installApk, package, local.installTarget, record.warnings);
-                    Task upload = UploadAsync(variant, record, started, progress);
+                    Task upload = UploadAsync(variant, record, progress);
                     await Task.WhenAll(install, upload);
                     record.installedOn = install.Result;
                     if (record.warnings.Count > 0) record.state = Warning;
@@ -159,16 +164,16 @@ namespace ThanhDV.AndroidBuildSupporter
 
             record.seconds = watch.Elapsed.TotalSeconds;
             record.finishedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
-            local.lastBuild = record;
-            local.Save();
+            if (record.state == Failed) record.logPath = BuildHistory.SaveLog(record.id, log.ToString());
+            BuildHistory.instance.Add(record);
 
             SetStatus($"{title}: sending to Discord…", progress, 0.95f);
-            string discordError = await Discord.NotifyAsync(record, report, record.state == Failed ? log.ToString() : null);
+            string discordError = await Discord.NotifyAsync(record);
             if (discordError != null) Debug.LogWarning("[Android Build Supporter] Discord: " + discordError);
 
             Progress.Finish(progress, record.state == Failed ? Progress.Status.Failed : Progress.Status.Succeeded);
             string summary = record.state == Failed
-                ? $"{title} failed after {Naming.Duration(record.seconds)}: {FirstLine(record.error)}"
+                ? $"{title} failed after {Naming.Duration(record.seconds)}: {Discord.Reason(record.error)}"
                 : $"{title} {record.version} ({record.code}) built in {Naming.Duration(record.seconds)}" +
                   (record.state == Warning ? $" with {record.warnings.Count} warning(s)" : "");
             SetStatus(summary);
@@ -227,7 +232,7 @@ namespace ThanhDV.AndroidBuildSupporter
             }
         }
 
-        private static async Task UploadAsync(BuildVariant variant, BuildRecord record, DateTime started, int progress)
+        private static async Task UploadAsync(BuildVariant variant, BuildRecord record, int progress)
         {
             BuildSupporterSettings settings = BuildSupporterSettings.instance;
             var files = record.files.Where(f =>
@@ -235,30 +240,39 @@ namespace ThanhDV.AndroidBuildSupporter
                 f.path.EndsWith(".aab", StringComparison.OrdinalIgnoreCase) ? settings.uploadReleaseAab : settings.uploadReleaseApk).ToList();
             if (!LocalSettings.instance.uploadEnabled || files.Count == 0) return;
 
+            string error = await UploadFilesAsync(record, files, (file, index, p) =>
+                SetStatus($"Uploading {file.name} {p:P0}…", progress, 0.7f + 0.25f * (index + p) / files.Count));
+            if (error != null) record.warnings.Add(error);
+        }
+
+        /// <summary>
+        /// Uploads the files into the record's Drive folder and stores their links; also used to upload again from
+        /// the history. Sharing problems are added to the record's warnings.
+        /// </summary>
+        /// <returns>Null when every file was uploaded, otherwise why not.</returns>
+        public static async Task<string> UploadFilesAsync(BuildRecord record, List<BuildFile> files, Action<BuildFile, int, float> progress)
+        {
             if (!GoogleAuth.HasRequiredScope)
-            {
-                record.warnings.Add(GoogleAuth.IsSignedIn
+                return GoogleAuth.IsSignedIn
                     ? "Upload skipped: the project folder needs full Drive access. Press Sign in again in the Distribution tab."
-                    : "Upload skipped: sign in to Google Drive in the Distribution tab.");
-                return;
-            }
+                    : "Upload skipped: sign in to Google Drive in the Distribution tab.";
 
             try
             {
-                string folder = await GoogleDrive.EnsureFolderAsync(Naming.DriveFolder(variant, started));
+                string folder = await GoogleDrive.EnsureFolderAsync(string.IsNullOrEmpty(record.driveFolder) ? "Builds/" + record.version : record.driveFolder);
                 for (int i = 0; i < files.Count; i++)
                 {
                     BuildFile file = files[i];
                     int index = i;
-                    var (link, shareWarning) = await GoogleDrive.UploadAsync(file.path, folder, p =>
-                        SetStatus($"Uploading {file.name} {p:P0}…", progress, 0.7f + 0.25f * (index + p) / files.Count));
+                    var (link, shareWarning) = await GoogleDrive.UploadAsync(file.path, folder, p => progress?.Invoke(file, index, p));
                     file.link = link;
                     if (shareWarning != null) record.warnings.Add(shareWarning);
                 }
+                return null;
             }
             catch (Exception e)
             {
-                record.warnings.Add("Upload failed: " + e.Message);
+                return "Upload failed: " + e.Message;
             }
         }
 
@@ -278,6 +292,8 @@ namespace ThanhDV.AndroidBuildSupporter
                 // An exception from a build callback says why; "Building player scripts failed" only says that it did.
                 .OrderBy(m => m.Contains("Exception") ? 0 : 1)
                 .Take(5)
+                // Compiler crashes carry long stack dumps; the whole text stays in the build log.
+                .Select(m => Shorten(m, 3))
                 .ToArray();
             if (messages.Length > 0) return string.Join("\n", messages);
 
@@ -285,7 +301,11 @@ namespace ThanhDV.AndroidBuildSupporter
             return fromLog ?? $"Build {report.summary.result} with {report.summary.totalErrors} error(s).";
         }
 
-        private static string FirstLine(string text) => (text ?? "").Split('\n').FirstOrDefault()?.Trim() ?? "";
+        private static string Shorten(string message, int lines)
+        {
+            string[] kept = message.Split('\n').Select(l => l.TrimEnd()).Where(l => l.Length > 0).ToArray();
+            return kept.Length <= lines ? string.Join("\n", kept) : string.Join("\n", kept.Take(lines)) + "\n…";
+        }
 
         private static void SetStatus(string status, int progress = -1, float value = 0)
         {

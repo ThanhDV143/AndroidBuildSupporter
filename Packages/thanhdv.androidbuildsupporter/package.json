@@ -1,6 +1,6 @@
 {
   "name": "thanhdv.androidbuildsupporter",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Android Build Supporter",
   "description": "Android build window for Unity: the settings you edit most in one place, QA APK and release AAB + APK builds, install with adb, upload to Google Drive and report to Discord.",
   "unity": "2022.3",

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -32,16 +33,7 @@ namespace ThanhDV.AndroidBuildSupporter
             public string title;
             public string description;
             public int color;
-            public Field[] fields;
             public string timestamp;
-        }
-
-        [Serializable]
-        private sealed class Field
-        {
-            public string name;
-            public string value;
-            public bool inline;
         }
 
         [Serializable]
@@ -85,45 +77,28 @@ namespace ThanhDV.AndroidBuildSupporter
             embeds = new[] { new Embed { title = "Android Build Supporter is connected", description = PlayerSettings.productName, color = Green, timestamp = Now } }
         }, null);
 
+        /// <summary>
+        /// Posts the build's result. After a build it follows the Notify switch and Notify on; sent again from the
+        /// history (<paramref name="resend"/>) it only needs the webhook.
+        /// </summary>
         /// <returns>Null when sent or not needed, otherwise why it failed.</returns>
-        public static async Task<string> NotifyAsync(BuildRecord record, BuildReport report, string failureLog)
+        public static async Task<string> NotifyAsync(BuildRecord record, bool resend = false)
         {
             BuildSupporterSettings settings = BuildSupporterSettings.instance;
             bool failed = record.state == BuildRunner.Failed;
-            if (!LocalSettings.instance.notifyEnabled || string.IsNullOrWhiteSpace(LocalSettings.instance.discordWebhook) ||
-                (failed ? !settings.notifyFailure : !settings.notifySuccess)) return null;
+            if (string.IsNullOrWhiteSpace(LocalSettings.instance.discordWebhook))
+                return resend ? "Enter a Discord webhook URL in the Distribution tab." : null;
+            if (!resend && (!LocalSettings.instance.notifyEnabled || (failed ? !settings.notifyFailure : !settings.notifySuccess))) return null;
 
-            var fields = new List<Field>
-            {
-                new Field { name = "Version", value = $"{record.version} ({record.code})", inline = true },
-                new Field { name = "Package", value = PlayerSettings.GetApplicationIdentifier(UnityCompat.Android), inline = true },
-                new Field { name = "Duration", value = Naming.Duration(record.seconds), inline = true }
-            };
-            string commit = await CommitAsync();
-            if (commit != null) fields.Add(new Field { name = "Commit", value = commit, inline = true });
-            if (record.files.Count > 0)
-                fields.Add(new Field
-                {
-                    name = "Files",
-                    value = Limit(string.Join("\n", record.files.Select(f => (f.link != null ? $"[{f.name}]({f.link})" : f.name) + " · " + Naming.Size(f.size))), 1024)
-                });
-            if (record.installedOn.Count > 0) fields.Add(new Field { name = "Installed on", value = Limit(string.Join(", ", record.installedOn), 1024) });
-            if (record.warnings.Count > 0) fields.Add(new Field { name = "Warnings", value = Limit(string.Join("\n", record.warnings.Select(w => "• " + w)), 1024) });
-            string steps = SlowestSteps(report);
-            if (steps != null) fields.Add(new Field { name = "Slowest steps", value = steps });
-
-            string title = $"{record.variant} build " + (failed ? "failed" : record.state == BuildRunner.Warning ? "finished with warnings" : "succeeded");
             var payload = new Payload
             {
                 embeds = new[]
                 {
                     new Embed
                     {
-                        title = Limit($"{title} · {PlayerSettings.productName}", 256),
-                        description = failed ? Limit("```\n" + record.error + "\n```", 4000) :
-                            record.state == BuildRunner.Warning ? "Built, but some steps need attention." : "Ready to test.",
+                        title = Limit(Title(record), 256),
+                        description = Limit(Description(record, resend), 4000),
                         color = failed ? Red : record.state == BuildRunner.Warning ? Amber : Green,
-                        fields = fields.ToArray(),
                         timestamp = Now
                     }
                 }
@@ -135,7 +110,53 @@ namespace ThanhDV.AndroidBuildSupporter
                 payload.content = string.Join(" ", users.Select(u => $"<@{u}>"));
                 payload.allowed_mentions.users = users;
             }
-            return await SendAsync(payload, failed ? failureLog : null);
+            return await SendAsync(payload, failed && record.HasLog ? File.ReadAllText(record.logPath) : null);
+        }
+
+        /// <summary>"✅ Success: My Game QA 1.2.3 (1020300)", in the format of the package publishing workflow.</summary>
+        public static string Title(BuildRecord record)
+        {
+            string status = record.state == BuildRunner.Failed ? "❌ Failure" : record.state == BuildRunner.Warning ? "⚠️ Warning" : "✅ Success";
+            return $"{status}: {PlayerSettings.productName} {record.variant} {record.version} ({record.code})";
+        }
+
+        /// <summary>One bold-labelled line per detail, like the workflow's messages; empty details are left out.</summary>
+        public static string Description(BuildRecord record, bool resend)
+        {
+            bool failed = record.state == BuildRunner.Failed;
+            string package = string.IsNullOrEmpty(record.package) ? PlayerSettings.GetApplicationIdentifier(UnityCompat.Android) : record.package;
+            var text = new StringBuilder();
+            text.AppendLine(failed
+                ? $"{record.variant} build of `{package}` failed after {Naming.Duration(record.seconds)}."
+                : $"{record.variant} build of `{package}` finished in {Naming.Duration(record.seconds)}.");
+            if (failed) text.AppendLine($"**Reason:** {Reason(record.error)}");
+            if (record.files.Count == 1) text.AppendLine($"**File:** {FileLine(record.files[0])}");
+            else if (record.files.Count > 1)
+            {
+                text.AppendLine("**Files:**");
+                foreach (BuildFile file in record.files) text.AppendLine(FileLine(file));
+            }
+            if (record.installedOn.Count > 0) text.AppendLine($"**Installed on:** {string.Join(", ", record.installedOn)}");
+            if (record.warnings.Count == 1) text.AppendLine($"**Warning:** {record.warnings[0]}");
+            else if (record.warnings.Count > 1)
+            {
+                text.AppendLine("**Warnings:**");
+                foreach (string warning in record.warnings) text.AppendLine("• " + warning);
+            }
+            if (failed && record.HasLog) text.AppendLine("**Build Log:** attached");
+            if (resend) text.AppendLine($"*Sent again from the history; built {record.finishedAt}.*");
+            return text.ToString().TrimEnd();
+        }
+
+        private static string FileLine(BuildFile file) =>
+            (string.IsNullOrEmpty(file.link) ? file.name : $"[{file.name}]({file.link})") + " · " + Naming.Size(file.size);
+
+        /// <summary>The first line of an error, joined with the next when it only introduces it ("… failed with output:").</summary>
+        public static string Reason(string text)
+        {
+            string[] lines = (text ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+            if (lines.Length == 0) return "Unknown error.";
+            return lines[0].EndsWith(":", StringComparison.Ordinal) && lines.Length > 1 ? lines[0] + " " + lines[1] : lines[0];
         }
 
         /// <summary>Discord lets one message mention at most 100 users.</summary>
@@ -187,7 +208,8 @@ namespace ThanhDV.AndroidBuildSupporter
             }
         }
 
-        private static string SlowestSteps(BuildReport report)
+        /// <summary>The five longest steps of the build, for the message and the history.</summary>
+        public static string SlowestSteps(BuildReport report)
         {
             if (report == null || report.steps.Length == 0) return null;
             // The first level under the whole build, where the time actually splits.
@@ -195,20 +217,6 @@ namespace ThanhDV.AndroidBuildSupporter
             var steps = report.steps.Where(s => s.depth == depth).OrderByDescending(s => s.duration).Take(5).ToArray();
             if (steps.Length == 0) return null;
             return Limit(string.Join("\n", steps.Select(s => $"{Naming.Duration(s.duration.TotalSeconds)} · {s.name}")), 1024);
-        }
-
-        /// <summary>"abc1234 on main", plus "(uncommitted changes)"; null outside a git repository.</summary>
-        private static async Task<string> CommitAsync()
-        {
-            string root = AndroidTools.ProjectRoot;
-            ProcessResult head = await ProcessRunner.RunAsync("git", new[] { "rev-parse", "--short", "HEAD" }, timeoutMs: 10000, workingDirectory: root);
-            if (!head.Succeeded) return null;
-            ProcessResult branch = await ProcessRunner.RunAsync("git", new[] { "rev-parse", "--abbrev-ref", "HEAD" }, timeoutMs: 10000, workingDirectory: root);
-            ProcessResult status = await ProcessRunner.RunAsync("git", new[] { "status", "--porcelain" }, timeoutMs: 10000, workingDirectory: root);
-            string text = head.Output.Trim();
-            if (branch.Succeeded) text += " on " + branch.Output.Trim();
-            if (status.Succeeded && status.Output.Trim().Length > 0) text += " (uncommitted changes)";
-            return text;
         }
 
         private static string Now => DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
