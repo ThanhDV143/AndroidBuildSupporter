@@ -2,7 +2,7 @@
   "name": "thanhdv.androidbuildsupporter",
   "version": "1.0.0",
   "displayName": "Android Build Supporter",
-  "description": "Editor window that keeps the Android settings you edit most in one place and builds a QA APK or a release AAB + APK, then installs it with adb, uploads it to Google Drive and reports to Discord.",
+  "description": "Android build window for Unity: the settings you edit most in one place, QA APK and release AAB + APK builds, install with adb, upload to Google Drive and report to Discord.",
   "unity": "2022.3",
   "keywords": [
     "Android",
@@ -16,6 +16,10 @@
     "name": "ThanhDV",
     "email": "vanthanh1998@gmail.com",
     "url": "https://me.thanhdv.com/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ThanhDV143/AndroidBuildSupporter.git"
   },
   "license": "MIT"
 }
